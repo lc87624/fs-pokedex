@@ -15,7 +15,7 @@ module.exports = [
   },
   js.configs.recommended,
   {
-    files: ['app.js'],
+    files: ['app.js', 'jest.setup.js', 'playwright.config.js', 'e2e-tests/**/*.js'],
     languageOptions: {
       ecmaVersion: 2018,
       sourceType: 'commonjs',
@@ -23,6 +23,9 @@ module.exports = [
         ...globals.node
       }
     },
+  },
+  {
+    files: ['app.js'],
     rules: {
       'indent': ['error', 2],
       'linebreak-style': ['error', 'unix'],
@@ -33,16 +36,6 @@ module.exports = [
       'object-curly-spacing': ['error', 'always'],
       'arrow-spacing': ['error', { 'before': true, 'after': true }],
       'no-console': 0
-    }
-  },
-  {
-    files: ['jest.setup.js'],
-    languageOptions: {
-      ecmaVersion: 2018,
-      sourceType: 'commonjs',
-      globals: {
-        ...globals.node
-      }
     }
   },
   {
