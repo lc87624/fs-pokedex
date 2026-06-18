@@ -9,7 +9,7 @@ on:
     types: [opened, synchronize]
 
 jobs:
-  simple_deployment_pipeline:
+  build_and_test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -28,12 +28,37 @@ jobs:
         run: npx playwright install --with-deps
       - name: Run e2e tests
         run: npm run test:e2e
+  deploy:
+    needs: [build_and_test]
+    if: ${{ github.event_name == 'push' && !contains(join(github.event.commits.*.message, ' '), '#skip') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
       - name: Trigger deployment
-        id: deploy
-        if: ${{ github.event_name == 'push' && !contains(join(github.event.commits.*.message), '#skip') }}
         run: curl ${{ secrets.RENDER_DEPLOY_HOOK }}
+  notify_failure:
+    needs: [build_and_test, deploy]
+    if: ${{ always() && (needs.build_and_test.result == 'failure' || needs.deploy.result == 'failure') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify failed deployment
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          status: Failure
+          title: Pipeline failed
+          description: |
+            The deployment pipeline failed.
+            Commit: ${{ github.sha }}
+            Commit message: ${{ github.event.head_commit.message || github.event.pull_request.title }}
+            Author: ${{ github.event.head_commit.author.name || github.event.pull_request.user.login }}
+            Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  notify_success:
+    needs: [deploy]
+    if: ${{ needs.deploy.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Notify successful deployment
-        if: ${{ success() && steps.deploy.outcome == 'success' }}
         uses: sarisia/actions-status-discord@v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
@@ -42,27 +67,15 @@ jobs:
           description: |
             A new version of fs-pokedex was deployed.
             Commit: ${{ github.sha }}
-          nodetail: true
-      - name: Notify failed build
-        if: ${{ failure() }}
-        uses: sarisia/actions-status-discord@v1
-        with:
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}
-          status: Failure
-          title: Build failed
-          description: |
-            The deployment pipeline failed.
-            Commit: ${{ github.sha }}
             Commit message: ${{ github.event.head_commit.message }}
             Author: ${{ github.event.head_commit.author.name }}
-          url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
   tag_release:
-    needs: [simple_deployment_pipeline]
+    needs: [deploy]
+    if: ${{ needs.deploy.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - name: Bump version and push tag
-        if: ${{ github.event_name == 'push' && !contains(join(github.event.commits.*.message), '#skip') }}
         uses: anothrNick/github-tag-action@1.75.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
